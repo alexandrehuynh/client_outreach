@@ -1,71 +1,82 @@
 import os
-import pickle
+import json
 from datetime import datetime
 from typing import List, Dict, Optional, Any
-from google.auth.transport.requests import Request
-from google.oauth2.credentials import Credentials
-from google_auth_oauthlib.flow import InstalledAppFlow
-from googleapiclient.discovery import build
-from googleapiclient.errors import HttpError
+import requests
+
+from msal import ConfidentialClientApplication
+from azure.identity import ClientSecretCredential
 
 from config import config
 from utils.logger import logger, log_operation, log_error
 
-class SheetsService:
-    """Google Sheets service for managing lead data."""
-    
-    SCOPES = ['https://www.googleapis.com/auth/spreadsheets']
+class OneDriveExcelService:
+    """Microsoft OneDrive Excel service for managing lead data via Graph API."""
     
     def __init__(self):
-        self.service = None
-        self.spreadsheet_id = config.SPREADSHEET_ID
-        self.sheet_name = config.SHEET_NAME
-        self._authenticate()
+        self.workbook_id = config.WORKBOOK_ID
+        self.worksheet_name = config.WORKSHEET_NAME
+        self._access_token = None
     
-    def _authenticate(self):
-        """Authenticate with Google Sheets API."""
-        creds = None
-        
-        # Load existing token
-        if os.path.exists(config.GMAIL_TOKEN_FILE):
-            with open(config.GMAIL_TOKEN_FILE, 'rb') as token:
-                creds = pickle.load(token)
-        
-        # If there are no (valid) credentials available, let the user log in
-        if not creds or not creds.valid:
-            if creds and creds.expired and creds.refresh_token:
-                creds.refresh(Request())
-            else:
-                if not os.path.exists(config.GMAIL_CREDENTIALS_FILE):
-                    raise FileNotFoundError(
-                        f"Credentials file {config.GMAIL_CREDENTIALS_FILE} not found. "
-                        "Please download it from Google Cloud Console."
-                    )
-                
-                flow = InstalledAppFlow.from_client_secrets_file(
-                    config.GMAIL_CREDENTIALS_FILE, self.SCOPES
+    def _get_access_token(self) -> str:
+        """Get access token for Microsoft Graph API."""
+        if not self._access_token:
+            try:
+                # Use MSAL to get token
+                app = ConfidentialClientApplication(
+                    client_id=config.OUTLOOK_CLIENT_ID,
+                    client_credential=config.OUTLOOK_CLIENT_SECRET,
+                    authority=f"https://login.microsoftonline.com/{config.OUTLOOK_TENANT_ID}"
                 )
-                creds = flow.run_local_server(port=0)
-            
-            # Save the credentials for the next run
-            with open(config.GMAIL_TOKEN_FILE, 'wb') as token:
-                pickle.dump(creds, token)
+                
+                result = app.acquire_token_for_client(scopes=["https://graph.microsoft.com/.default"])
+                
+                if "access_token" in result:
+                    self._access_token = result["access_token"]
+                else:
+                    raise Exception(f"Failed to acquire token: {result}")
+                    
+            except Exception as e:
+                logger.error(f"Failed to get access token: {e}")
+                raise
         
-        self.service = build('sheets', 'v4', credentials=creds)
-        logger.info("Successfully authenticated with Google Sheets API")
+        return self._access_token
+    
+    def _make_graph_request(self, method: str, endpoint: str, data: Dict = None) -> Dict:
+        """Make authenticated request to Microsoft Graph API."""
+        access_token = self._get_access_token()
+        headers = {
+            'Authorization': f'Bearer {access_token}',
+            'Content-Type': 'application/json'
+        }
+        
+        url = f"https://graph.microsoft.com/v1.0{endpoint}"
+        
+        if method.upper() == 'GET':
+            response = requests.get(url, headers=headers)
+        elif method.upper() == 'POST':
+            response = requests.post(url, headers=headers, json=data)
+        elif method.upper() == 'PATCH':
+            response = requests.patch(url, headers=headers, json=data)
+        else:
+            raise ValueError(f"Unsupported HTTP method: {method}")
+        
+        if response.status_code in [200, 201, 202]:
+            return response.json() if response.content else {}
+        else:
+            raise Exception(f"Graph API request failed: {response.status_code} - {response.text}")
     
     def get_all_leads(self) -> List[Dict[str, Any]]:
-        """Get all leads from the spreadsheet."""
+        """Get all leads from the Excel worksheet."""
         try:
-            result = self.service.spreadsheets().values().get(
-                spreadsheetId=self.spreadsheet_id,
-                range=f"{self.sheet_name}!A:H"
-            ).execute()
+            # Get worksheet data
+            endpoint = f"/me/drive/items/{self.workbook_id}/workbook/worksheets('{self.worksheet_name}')/usedRange"
+            result = self._make_graph_request('GET', endpoint)
             
             values = result.get('values', [])
             
             if not values:
-                logger.warning("No data found in spreadsheet")
+                logger.warning("No data found in Excel worksheet")
                 return []
             
             # Skip header row and convert to dictionaries
@@ -81,11 +92,11 @@ class SheetsService:
                 lead['row_number'] = i
                 leads.append(lead)
             
-            log_operation("GET_LEADS", {"count": len(leads)})
+            log_operation("GET_LEADS", {"count": len(leads), "service": "onedrive_excel"})
             return leads
             
-        except HttpError as error:
-            log_error("GET_LEADS", error)
+        except Exception as error:
+            log_error("GET_LEADS", error, {"service": "onedrive_excel"})
             raise
     
     def get_leads_by_status(self, status: str) -> List[Dict[str, Any]]:
@@ -95,7 +106,8 @@ class SheetsService:
         
         log_operation("GET_LEADS_BY_STATUS", {
             "status": status, 
-            "count": len(filtered_leads)
+            "count": len(filtered_leads),
+            "service": "onedrive_excel"
         })
         return filtered_leads
     
@@ -104,61 +116,58 @@ class SheetsService:
                           follow_up_sent: str = None, notes: str = None):
         """Update lead status and related fields."""
         try:
+            # Prepare update data
             updates = []
             
-            # Status update
-            updates.append({
-                'range': f"{self.sheet_name}!D{row_number}",
-                'values': [[status]]
-            })
+            # Status update (Column D)
+            if status:
+                updates.append({
+                    'address': f'D{row_number}',
+                    'values': [[status]]
+                })
             
-            # Date contacted
+            # Date contacted (Column E)
             if date_contacted:
                 updates.append({
-                    'range': f"{self.sheet_name}!E{row_number}",
+                    'address': f'E{row_number}',
                     'values': [[date_contacted]]
                 })
             
-            # Response received
+            # Response received (Column F)
             if response_received:
                 updates.append({
-                    'range': f"{self.sheet_name}!F{row_number}",
+                    'address': f'F{row_number}',
                     'values': [[response_received]]
                 })
             
-            # Follow-up sent
+            # Follow-up sent (Column G)
             if follow_up_sent:
                 updates.append({
-                    'range': f"{self.sheet_name}!G{row_number}",
+                    'address': f'G{row_number}',
                     'values': [[follow_up_sent]]
                 })
             
-            # Notes
+            # Notes (Column H)
             if notes:
                 updates.append({
-                    'range': f"{self.sheet_name}!H{row_number}",
+                    'address': f'H{row_number}',
                     'values': [[notes]]
                 })
             
-            # Batch update
-            body = {
-                'valueInputOption': 'RAW',
-                'data': updates
-            }
-            
-            self.service.spreadsheets().values().batchUpdate(
-                spreadsheetId=self.spreadsheet_id,
-                body=body
-            ).execute()
+            # Batch update all changes
+            for update in updates:
+                endpoint = f"/me/drive/items/{self.workbook_id}/workbook/worksheets('{self.worksheet_name}')/range(address='{update['address']}')"
+                self._make_graph_request('PATCH', endpoint, {'values': update['values']})
             
             log_operation("UPDATE_LEAD_STATUS", {
                 "row": row_number,
                 "status": status,
-                "updates": len(updates)
+                "updates": len(updates),
+                "service": "onedrive_excel"
             })
             
-        except HttpError as error:
-            log_error("UPDATE_LEAD_STATUS", error, {"row": row_number})
+        except Exception as error:
+            log_error("UPDATE_LEAD_STATUS", error, {"row": row_number, "service": "onedrive_excel"})
             raise
     
     def mark_contacted(self, row_number: int, contact_type: str):
@@ -198,48 +207,86 @@ class SheetsService:
     
     def get_leads_for_follow_up(self) -> List[Dict[str, Any]]:
         """Get leads that need follow-up (contacted 2+ days ago, no response)."""
-        from datetime import datetime, timedelta
-        
-        all_leads = self.get_all_leads()
-        follow_up_leads = []
-        
-        cutoff_date = datetime.now() - timedelta(days=config.FOLLOW_UP_DELAY_DAYS)
-        
-        for lead in all_leads:
-            if (lead.get('status') == config.STATUS_CONTACTED and 
-                not lead.get('response_received') and 
-                not lead.get('follow_up_sent')):
-                
-                date_contacted = lead.get('date_contacted')
-                if date_contacted:
-                    try:
-                        contacted_date = datetime.strptime(date_contacted, "%Y-%m-%d %H:%M:%S")
-                        if contacted_date <= cutoff_date:
-                            follow_up_leads.append(lead)
-                    except ValueError:
-                        # Skip if date format is invalid
-                        continue
-        
-        log_operation("GET_FOLLOW_UP_LEADS", {"count": len(follow_up_leads)})
-        return follow_up_leads
-    
-    def create_backup(self) -> str:
-        """Create a backup of the current spreadsheet data."""
         try:
-            leads = self.get_all_leads()
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            backup_file = f"backups/leads_backup_{timestamp}.json"
+            contacted_leads = self.get_leads_by_status(config.STATUS_CONTACTED)
+            follow_up_leads = []
             
-            # Create backups directory
-            os.makedirs('backups', exist_ok=True)
+            for lead in contacted_leads:
+                date_contacted = lead.get('date_contacted', '')
+                if not date_contacted:
+                    continue
+                
+                try:
+                    # Parse the date
+                    contact_date = datetime.strptime(date_contacted.split(' ')[0], "%Y-%m-%d")
+                    days_since_contact = (datetime.now() - contact_date).days
+                    
+                    # If it's been more than the configured follow-up delay
+                    if days_since_contact >= config.FOLLOW_UP_DELAY_DAYS:
+                        follow_up_leads.append(lead)
+                        
+                except ValueError:
+                    # Skip if date format is invalid
+                    continue
             
-            import json
-            with open(backup_file, 'w') as f:
-                json.dump(leads, f, indent=2)
-            
-            log_operation("CREATE_BACKUP", {"file": backup_file, "records": len(leads)})
-            return backup_file
+            log_operation("GET_FOLLOW_UP_LEADS", {
+                "count": len(follow_up_leads),
+                "service": "onedrive_excel"
+            })
+            return follow_up_leads
             
         except Exception as error:
-            log_error("CREATE_BACKUP", error)
-            raise 
+            log_error("GET_FOLLOW_UP_LEADS", error, {"service": "onedrive_excel"})
+            return []
+    
+    def create_backup(self) -> str:
+        """Create a backup of the current worksheet data."""
+        try:
+            leads_data = self.get_all_leads()
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            
+            # Create backups directory if it doesn't exist
+            os.makedirs('backups', exist_ok=True)
+            
+            backup_filename = f"backups/leads_backup_{timestamp}.json"
+            
+            with open(backup_filename, 'w') as f:
+                json.dump(leads_data, f, indent=2, default=str)
+            
+            log_operation("CREATE_BACKUP", {
+                "filename": backup_filename,
+                "record_count": len(leads_data),
+                "service": "onedrive_excel"
+            })
+            
+            return backup_filename
+            
+        except Exception as error:
+            log_error("CREATE_BACKUP", error, {"service": "onedrive_excel"})
+            raise
+    
+    def get_worksheet_stats(self) -> Dict:
+        """Get statistics about the worksheet data."""
+        try:
+            all_leads = self.get_all_leads()
+            
+            stats = {
+                'total_leads': len(all_leads),
+                'by_status': {},
+                'last_updated': datetime.now().isoformat(),
+                'service': 'onedrive_excel'
+            }
+            
+            # Count by status
+            for lead in all_leads:
+                status = lead.get('status', 'Unknown')
+                stats['by_status'][status] = stats['by_status'].get(status, 0) + 1
+            
+            return stats
+            
+        except Exception as error:
+            log_error("GET_WORKSHEET_STATS", error, {"service": "onedrive_excel"})
+            return {'error': str(error)}
+
+# For backward compatibility, alias the new service
+SheetsService = OneDriveExcelService 

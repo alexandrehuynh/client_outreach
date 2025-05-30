@@ -1,130 +1,128 @@
-# Virtual Environment Setup Guide
+# Virtual Environment Guide - Microsoft Services
 
-This project uses a Python virtual environment to manage dependencies and ensure consistent behavior across different systems.
+## Updated Setup for Microsoft Services
 
-## Quick Start
+This project now uses **Microsoft Graph API** (Outlook + OneDrive Excel) instead of Google services. Here's how to manage your virtual environment.
 
-### Activate Virtual Environment
+## Current Environment: `venv`
+
+### 🔄 **Activate the Environment**
+
+**On macOS/Linux:**
 ```bash
-# On macOS/Linux
 source venv/bin/activate
+```
 
-# On Windows
+**On Windows:**
+```cmd
 venv\Scripts\activate
 ```
 
-### Deactivate Virtual Environment
+### ✅ **Verify You're in the Right Environment**
+
+When activated, your terminal should show:
+```bash
+(venv) your-computer:client_outreach$
+```
+
+### 📦 **Dependencies Installed**
+
+The new environment includes:
+- **Microsoft Graph SDK** (msgraph-sdk==1.0.0)
+- **Azure Identity** (azure-identity==1.15.0)
+- **MSAL** (msal==1.25.0) for authentication
+- **Twilio** (twilio==8.10.0) for SMS
+- **OpenPyXL** (openpyxl==3.1.2) for Excel support
+- All other required dependencies
+
+### 🧪 **Test Your Setup**
+
+```bash
+# Make sure you're in the activated environment
+python test_setup.py
+```
+
+### 🔧 **Next Steps**
+
+1. **Create `.env` file:**
+   ```bash
+   cp env.example .env
+   ```
+
+2. **Follow the setup guide:**
+   - Read `MICROSOFT_SETUP_GUIDE.md`
+   - Set up Azure AD app registration
+   - Create OneDrive Excel workbook
+   - Configure Twilio with your Bay Club email
+
+3. **Configure your `.env` with real values:**
+   ```env
+   WORKBOOK_ID=your_actual_workbook_id
+   OUTLOOK_CLIENT_ID=your_azure_app_client_id
+   OUTLOOK_CLIENT_SECRET=your_azure_app_client_secret
+   OUTLOOK_TENANT_ID=your_azure_tenant_id
+   SENDER_EMAIL=alex.huynh@bayclubs.com
+   TWILIO_ACCOUNT_SID=your_twilio_sid
+   TWILIO_AUTH_TOKEN=your_twilio_token
+   TWILIO_PHONE_NUMBER=+1234567890
+   ```
+
+### 🚫 **Deactivate Environment**
+
+When you're done working:
 ```bash
 deactivate
 ```
 
-### Install Dependencies
+## Migration from Google Services ✅
+
+**What was removed:**
+- Google Auth libraries
+- Google Sheets API
+- Gmail API
+- All Google-specific credentials
+
+**What was added:**
+- Microsoft Graph SDK
+- Azure authentication
+- OneDrive Excel support
+- Outlook email integration
+
+## Environment Management
+
+### If You Need to Recreate the Environment:
+
 ```bash
-# After activating the virtual environment
+# Remove old environment
+rm -rf venv
+
+# Create new environment
+python -m venv venv
+
+# Activate it
+source venv/bin/activate
+
+# Install dependencies
 pip install -r requirements.txt
 ```
 
-## Setting Up From Scratch
+### Keep Dependencies Updated:
 
-If you're cloning this repository for the first time:
-
-### 1. Clone the Repository
 ```bash
-git clone https://github.com/alexandrehuynh/client_outreach.git
-cd client_outreach
-```
-
-### 2. Create Virtual Environment
-```bash
-# Python 3.8+ required
-python3 -m venv venv
-```
-
-### 3. Activate Virtual Environment
-```bash
-# macOS/Linux
+# Activate environment first
 source venv/bin/activate
 
-# Windows
-venv\Scripts\activate
+# Update all packages
+pip install --upgrade -r requirements.txt
 ```
 
-### 4. Install Dependencies
-```bash
-pip install -r requirements.txt
-```
+---
 
-### 5. Test Installation
-```bash
-python test_setup.py
-```
+## 🎯 Quick Reference
 
-## Virtual Environment Benefits
+**Activate:** `source venv/bin/activate`  
+**Test:** `python test_setup.py`  
+**Run:** `python main.py --mode status`  
+**Deactivate:** `deactivate`
 
-✅ **Isolated Dependencies**: Prevents conflicts with other Python projects  
-✅ **Reproducible Environment**: Same package versions across all systems  
-✅ **Easy Deployment**: Simple requirements.txt for setup  
-✅ **Clean System**: Doesn't modify system-wide Python installation  
-
-## Important Notes
-
-- **Never commit the `venv/` folder** - It's excluded in `.gitignore`
-- **Always activate before working** - Ensures you're using the right packages
-- **Update requirements.txt** if you add new packages:
-  ```bash
-  pip freeze > requirements.txt
-  ```
-
-## Troubleshooting
-
-### Virtual Environment Not Found
-```bash
-# Recreate it
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-```
-
-### Package Import Errors
-```bash
-# Make sure virtual environment is activated
-source venv/bin/activate
-
-# Reinstall dependencies
-pip install -r requirements.txt
-```
-
-### Python Version Issues
-This project requires Python 3.8+. Check your version:
-```bash
-python --version
-```
-
-If you need a different Python version, create the virtual environment with:
-```bash
-python3.9 -m venv venv  # Example for Python 3.9
-```
-
-## IDE Setup
-
-### VS Code
-1. Install the Python extension
-2. Open the project folder
-3. Press `Ctrl+Shift+P` (or `Cmd+Shift+P` on Mac)
-4. Type "Python: Select Interpreter"
-5. Choose the interpreter in `./venv/bin/python`
-
-### PyCharm
-1. Open the project
-2. Go to File → Settings → Project → Python Interpreter
-3. Click the gear icon → Add
-4. Choose "Existing Environment"
-5. Select `./venv/bin/python`
-
-## Running the Application
-
-Always activate the virtual environment first:
-```bash
-source venv/bin/activate
-python main.py --mode status
-``` 
+Your project is now fully migrated to Microsoft services! 🚀 

@@ -1,15 +1,3 @@
-# Credentials and sensitive files
-credentials.json
-token.json
-.env
-
-# Logs
-logs/
-*.log
-
-# Backups
-backups/
-
 # Python
 __pycache__/
 *.py[cod]
@@ -35,14 +23,33 @@ share/python-wheels/
 *.egg
 MANIFEST
 
-# Virtual environments
-.env
-.venv
-env/
+# Virtual Environment
 venv/
+env/
 ENV/
-env.bak/
-venv.bak/
+venv_*/
+
+# Environment Variables
+.env
+.env.local
+.env.production
+
+# Microsoft Graph / Azure Credentials
+outlook_token.json
+*.credential
+azure_credentials.json
+
+# Old Google Credentials (deprecated)
+credentials.json
+token.json
+token.pickle
+
+# Logs
+logs/
+*.log
+
+# Backups
+backups/
 
 # IDE
 .vscode/
@@ -59,6 +66,14 @@ venv.bak/
 .Trashes
 ehthumbs.db
 Thumbs.db
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Documentation
+docs/_build/
 
 # Windows batch files (generated)
 *.bat
