@@ -4,19 +4,16 @@ from typing import Dict, List
 
 @dataclass
 class Config:
-    # Microsoft OneDrive Excel Configuration (replaces Google Sheets)
-    WORKBOOK_ID: str = field(default_factory=lambda: os.getenv('WORKBOOK_ID', 'your_onedrive_workbook_id_here'))
-    WORKSHEET_NAME: str = 'Leads'
+    # Google Sheets Configuration
+    SPREADSHEET_ID: str = field(default_factory=lambda: os.getenv('SPREADSHEET_ID', 'your_google_spreadsheet_id_here'))
+    SHEET_NAME: str = 'Leads'
     
-    # Microsoft Outlook Configuration (replaces Gmail)
-    OUTLOOK_CLIENT_ID: str = field(default_factory=lambda: os.getenv('OUTLOOK_CLIENT_ID', 'your_azure_app_client_id'))
-    OUTLOOK_CLIENT_SECRET: str = field(default_factory=lambda: os.getenv('OUTLOOK_CLIENT_SECRET', 'your_azure_app_client_secret'))
-    OUTLOOK_TENANT_ID: str = field(default_factory=lambda: os.getenv('OUTLOOK_TENANT_ID', 'your_azure_tenant_id'))
+    # Gmail Configuration
+    GMAIL_CREDENTIALS_FILE: str = 'credentials.json'
+    GMAIL_TOKEN_FILE: str = 'token.json'
+    GMAIL_ACCOUNT: str = field(default_factory=lambda: os.getenv('GMAIL_ACCOUNT', 'alexhuynhfitness@gmail.com'))
     SENDER_EMAIL: str = field(default_factory=lambda: os.getenv('SENDER_EMAIL', 'alex.huynh@bayclubs.com'))
     SENDER_NAME: str = 'Alex Huynh - Personal Trainer'
-    
-    # Microsoft authentication files
-    OUTLOOK_TOKEN_FILE: str = 'outlook_token.json'
     
     # Twilio SMS Configuration
     TWILIO_ACCOUNT_SID: str = field(default_factory=lambda: os.getenv('TWILIO_ACCOUNT_SID', 'your_twilio_sid'))
@@ -116,7 +113,7 @@ Ready to start your transformation? Text YES or STOP to opt out.
         """
     })
     
-    # Spreadsheet Column Mapping (same structure for Excel)
+    # Spreadsheet Column Mapping
     COLUMN_MAPPING: Dict[str, int] = field(default_factory=lambda: {
         'name': 0,      # Column A
         'email': 1,     # Column B  

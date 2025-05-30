@@ -1,54 +1,66 @@
 import os
-import json
+import pickle
+import base64
 import time
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
-import asyncio
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 
-from msal import ConfidentialClientApplication, PublicClientApplication
-from msgraph import GraphServiceClient
-from azure.identity import ClientSecretCredential
-import requests
+from google.auth.transport.requests import Request
+from google.oauth2.credentials import Credentials
+from google_auth_oauthlib.flow import InstalledAppFlow
+from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
 
 from config import config
 from utils.logger import logger, log_operation, log_error, log_rate_limit, log_compliance
 
-class OutlookEmailService:
-    """Microsoft Outlook service for sending cold outreach emails via Graph API."""
+class GmailEmailService:
+    """Gmail service for sending cold outreach emails that appear to come from Bay Club email."""
     
-    # Microsoft Graph scopes needed for sending emails
     SCOPES = [
-        'https://graph.microsoft.com/Mail.Send',
-        'https://graph.microsoft.com/Mail.Read'
+        'https://www.googleapis.com/auth/gmail.send',
+        'https://www.googleapis.com/auth/gmail.readonly'
     ]
     
     def __init__(self):
-        self.graph_client = None
+        self.service = None
         self.sent_count = 0
         self.last_reset = datetime.now()
         self._authenticate()
     
     def _authenticate(self):
-        """Authenticate with Microsoft Graph API."""
-        try:
-            # Use client credentials flow for server-to-server authentication
-            credential = ClientSecretCredential(
-                tenant_id=config.OUTLOOK_TENANT_ID,
-                client_id=config.OUTLOOK_CLIENT_ID,
-                client_secret=config.OUTLOOK_CLIENT_SECRET
-            )
+        """Authenticate with Gmail API."""
+        creds = None
+        
+        # Load existing token
+        if os.path.exists(config.GMAIL_TOKEN_FILE):
+            with open(config.GMAIL_TOKEN_FILE, 'rb') as token:
+                creds = pickle.load(token)
+        
+        # If there are no (valid) credentials available, let the user log in
+        if not creds or not creds.valid:
+            if creds and creds.expired and creds.refresh_token:
+                creds.refresh(Request())
+            else:
+                if not os.path.exists(config.GMAIL_CREDENTIALS_FILE):
+                    raise FileNotFoundError(
+                        f"Credentials file {config.GMAIL_CREDENTIALS_FILE} not found. "
+                        "Please download it from Google Cloud Console."
+                    )
+                
+                flow = InstalledAppFlow.from_client_secrets_file(
+                    config.GMAIL_CREDENTIALS_FILE, self.SCOPES
+                )
+                creds = flow.run_local_server(port=0)
             
-            # Create Graph service client
-            self.graph_client = GraphServiceClient(
-                credentials=credential,
-                scopes=self.SCOPES
-            )
-            
-            logger.info("Successfully authenticated with Microsoft Graph API")
-            
-        except Exception as e:
-            logger.error(f"Failed to authenticate with Microsoft Graph: {e}")
-            raise
+            # Save the credentials for the next run
+            with open(config.GMAIL_TOKEN_FILE, 'wb') as token:
+                pickle.dump(creds, token)
+        
+        self.service = build('gmail', 'v1', credentials=creds)
+        logger.info("Successfully authenticated with Gmail API")
     
     def _check_rate_limit(self) -> bool:
         """Check if we're within rate limits."""
@@ -66,44 +78,31 @@ class OutlookEmailService:
         return True
     
     def _create_message(self, to_email: str, subject: str, body: str) -> Dict:
-        """Create email message for Graph API."""
+        """Create email message that appears to come from Bay Club email."""
+        message = MIMEMultipart('alternative')
+        message['to'] = to_email
+        # Use Bay Club email as the sender (configured in Gmail "Send as")
+        message['from'] = f"{config.SENDER_NAME} <{config.SENDER_EMAIL}>"
+        message['subject'] = subject
         
-        # Convert plain text to HTML with basic formatting
+        # Add Reply-To to ensure replies go to Bay Club email
+        message['Reply-To'] = config.SENDER_EMAIL
+        
+        # Add unsubscribe headers for compliance
+        message['List-Unsubscribe'] = f"<mailto:{config.SENDER_EMAIL}?subject=UNSUBSCRIBE>"
+        message['List-Unsubscribe-Post'] = "List-Unsubscribe=One-Click"
+        
+        # Create HTML and text versions
         html_body = self._convert_to_html(body)
         
-        message = {
-            "subject": subject,
-            "body": {
-                "contentType": "HTML",
-                "content": html_body
-            },
-            "toRecipients": [
-                {
-                    "emailAddress": {
-                        "address": to_email
-                    }
-                }
-            ],
-            "from": {
-                "emailAddress": {
-                    "address": config.SENDER_EMAIL,
-                    "name": config.SENDER_NAME
-                }
-            },
-            # Add compliance headers
-            "internetMessageHeaders": [
-                {
-                    "name": "List-Unsubscribe",
-                    "value": f"<mailto:{config.SENDER_EMAIL}?subject=UNSUBSCRIBE>"
-                },
-                {
-                    "name": "List-Unsubscribe-Post", 
-                    "value": "List-Unsubscribe=One-Click"
-                }
-            ]
-        }
+        text_part = MIMEText(body, 'plain')
+        html_part = MIMEText(html_body, 'html')
         
-        return message
+        message.attach(text_part)
+        message.attach(html_part)
+        
+        raw_message = base64.urlsafe_b64encode(message.as_bytes()).decode()
+        return {'raw': raw_message}
     
     def _convert_to_html(self, text: str) -> str:
         """Convert plain text to HTML with basic formatting."""
@@ -132,7 +131,7 @@ class OutlookEmailService:
         """
     
     def send_email(self, to_email: str, template_type: str, lead_data: Dict) -> bool:
-        """Send personalized email to lead via Microsoft Graph."""
+        """Send personalized email to lead."""
         try:
             # Check rate limit
             if not self._check_rate_limit():
@@ -156,74 +155,46 @@ class OutlookEmailService:
             personalized_subject = self._personalize_content(subject, lead_data)
             personalized_body = self._personalize_content(body, lead_data)
             
-            # Create message
+            # Create and send message
             message = self._create_message(to_email, personalized_subject, personalized_body)
             
-            # Send via Graph API using requests (simpler than async client)
-            access_token = self._get_access_token()
+            result = self.service.users().messages().send(
+                userId='me',
+                body=message
+            ).execute()
             
-            headers = {
-                'Authorization': f'Bearer {access_token}',
-                'Content-Type': 'application/json'
-            }
+            self.sent_count += 1
             
-            # Use the /sendMail endpoint
-            url = f"https://graph.microsoft.com/v1.0/users/{config.SENDER_EMAIL}/sendMail"
-            payload = {
-                "message": message,
-                "saveToSentItems": True
-            }
+            log_operation("SEND_EMAIL", {
+                "to": to_email,
+                "template": template_type,
+                "message_id": result.get('id'),
+                "subject": personalized_subject,
+                "service": "gmail",
+                "appears_from": config.SENDER_EMAIL
+            })
             
-            response = requests.post(url, headers=headers, json=payload)
+            log_compliance("EMAIL_SENT", to_email, "CAN-SPAM compliant with unsubscribe")
             
-            if response.status_code == 202:  # Microsoft Graph returns 202 for successful send
-                self.sent_count += 1
-                
-                log_operation("SEND_EMAIL", {
-                    "to": to_email,
-                    "template": template_type,
-                    "subject": personalized_subject,
-                    "service": "outlook"
-                })
-                
-                log_compliance("EMAIL_SENT", to_email, "CAN-SPAM compliant with unsubscribe")
-                
-                # Add delay between sends to avoid being flagged
-                time.sleep(2)
-                
-                return True
-            else:
-                logger.error(f"Failed to send email: {response.status_code} - {response.text}")
-                return False
+            # Add delay between sends to avoid being flagged
+            time.sleep(2)
             
+            return True
+            
+        except HttpError as error:
+            log_error("SEND_EMAIL", error, {
+                "to": to_email,
+                "template": template_type,
+                "service": "gmail"
+            })
+            return False
         except Exception as error:
             log_error("SEND_EMAIL", error, {
                 "to": to_email,
                 "template": template_type,
-                "service": "outlook"
+                "service": "gmail"
             })
             return False
-    
-    def _get_access_token(self) -> str:
-        """Get access token for Microsoft Graph API."""
-        try:
-            # Use MSAL to get token
-            app = ConfidentialClientApplication(
-                client_id=config.OUTLOOK_CLIENT_ID,
-                client_credential=config.OUTLOOK_CLIENT_SECRET,
-                authority=f"https://login.microsoftonline.com/{config.OUTLOOK_TENANT_ID}"
-            )
-            
-            result = app.acquire_token_for_client(scopes=["https://graph.microsoft.com/.default"])
-            
-            if "access_token" in result:
-                return result["access_token"]
-            else:
-                raise Exception(f"Failed to acquire token: {result}")
-                
-        except Exception as e:
-            logger.error(f"Failed to get access token: {e}")
-            raise
     
     def _personalize_content(self, content: str, lead_data: Dict) -> str:
         """Personalize email content with lead data."""
@@ -244,60 +215,85 @@ class OutlookEmailService:
     def check_responses(self) -> List[Dict]:
         """Check for email responses and unsubscribe requests."""
         try:
-            access_token = self._get_access_token()
-            headers = {
-                'Authorization': f'Bearer {access_token}',
-                'Content-Type': 'application/json'
-            }
+            # Search for emails in the last 7 days to Bay Club email
+            query = f"to:{config.SENDER_EMAIL} newer_than:7d"
             
-            # Get recent emails from inbox
-            url = f"https://graph.microsoft.com/v1.0/users/{config.SENDER_EMAIL}/mailFolders/inbox/messages"
-            params = {
-                '$top': 50,
-                '$orderby': 'receivedDateTime desc',
-                '$filter': f"receivedDateTime ge {(datetime.now() - timedelta(days=7)).isoformat()}"
-            }
+            result = self.service.users().messages().list(
+                userId='me',
+                q=query,
+                maxResults=50
+            ).execute()
             
-            response = requests.get(url, headers=headers, params=params)
+            messages = result.get('messages', [])
+            responses = []
             
-            if response.status_code == 200:
-                messages = response.json().get('value', [])
-                responses = []
+            for message in messages:
+                msg_detail = self.service.users().messages().get(
+                    userId='me',
+                    id=message['id']
+                ).execute()
                 
-                for message in messages:
-                    # Check if it's a response to our outreach
-                    subject = message.get('subject', '').lower()
-                    body = message.get('body', {}).get('content', '').lower()
-                    sender = message.get('from', {}).get('emailAddress', {}).get('address', '')
-                    
-                    if any(keyword in subject or keyword in body for keyword in ['unsubscribe', 'remove', 'stop']):
-                        responses.append({
-                            'type': 'unsubscribe',
-                            'sender': sender,
-                            'subject': message.get('subject'),
-                            'received': message.get('receivedDateTime')
-                        })
-                    elif 'yes' in body or 'interested' in body:
-                        responses.append({
-                            'type': 'interested',
-                            'sender': sender,
-                            'subject': message.get('subject'),
-                            'received': message.get('receivedDateTime')
-                        })
+                headers = msg_detail['payload']['headers']
+                sender = next((h['value'] for h in headers if h['name'] == 'From'), '')
+                subject = next((h['value'] for h in headers if h['name'] == 'Subject'), '')
                 
-                log_operation("CHECK_RESPONSES", {"count": len(responses), "service": "outlook"})
-                return responses
-            else:
-                logger.error(f"Failed to check responses: {response.status_code}")
-                return []
+                # Get email body
+                body = self._extract_body(msg_detail['payload'])
                 
-        except Exception as error:
-            log_error("CHECK_RESPONSES", error, {"service": "outlook"})
+                # Check if it's an unsubscribe request or interested response
+                if any(keyword in subject.lower() or keyword in body.lower() 
+                       for keyword in ['unsubscribe', 'remove', 'stop']):
+                    responses.append({
+                        'type': 'unsubscribe',
+                        'sender': sender,
+                        'subject': subject,
+                        'message_id': message['id']
+                    })
+                elif any(keyword in body.lower() 
+                        for keyword in ['yes', 'interested', 'tell me more']):
+                    responses.append({
+                        'type': 'interested',
+                        'sender': sender,
+                        'subject': subject,
+                        'message_id': message['id']
+                    })
+                else:
+                    responses.append({
+                        'type': 'reply',
+                        'sender': sender,
+                        'subject': subject,
+                        'message_id': message['id']
+                    })
+            
+            log_operation("CHECK_RESPONSES", {
+                "count": len(responses), 
+                "service": "gmail"
+            })
+            return responses
+            
+        except HttpError as error:
+            log_error("CHECK_RESPONSES", error, {"service": "gmail"})
             return []
+    
+    def _extract_body(self, payload):
+        """Extract email body from Gmail message payload."""
+        body = ""
+        if 'parts' in payload:
+            for part in payload['parts']:
+                if part['mimeType'] == 'text/plain':
+                    data = part['body']['data']
+                    body = base64.urlsafe_b64decode(data).decode('utf-8')
+                    break
+        else:
+            if payload['mimeType'] == 'text/plain':
+                data = payload['body']['data']
+                body = base64.urlsafe_b64decode(data).decode('utf-8')
+        
+        return body
     
     def get_sent_count(self) -> int:
         """Get number of emails sent in current hour."""
         return self.sent_count
 
-# For backward compatibility, alias the new service
-EmailService = OutlookEmailService 
+# For backward compatibility, alias the service
+EmailService = GmailEmailService 

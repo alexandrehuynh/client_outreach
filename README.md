@@ -1,311 +1,259 @@
-# Cold Outreach Automation System for Personal Training Business
+# 🎯 Bay Club Cold Outreach Automation
 
-A comprehensive Python automation system for managing cold email and SMS outreach to fitness leads. This system integrates with Google Sheets for lead management, Gmail for email sending, and Twilio for SMS messaging.
+Automated email and SMS outreach system for Bay Club personal training services using **Google Gmail + Google Sheets** with professional Bay Club branding.
 
-## Features
+## 🌟 Features
 
-✅ **Multi-Channel Outreach**: Send both emails and SMS messages  
-✅ **Google Sheets Integration**: Automatic lead management and status tracking  
-✅ **Smart Follow-ups**: Automated follow-up messages after 2 days  
-✅ **Rate Limiting**: Built-in protection against being flagged as spam  
-✅ **Compliance**: CAN-SPAM and TCPA compliant with unsubscribe mechanisms  
-✅ **Response Tracking**: Monitor replies and automatically handle unsubscribes  
-✅ **Comprehensive Logging**: Detailed logs for monitoring and debugging  
-✅ **Backup System**: Automatic data backups before processing  
+- **Gmail Integration**: Send from `alexhuynhfitness@gmail.com` that appears to come from `alex.huynh@bayclubs.com`
+- **Google Sheets Tracking**: Comprehensive lead management and response tracking
+- **Twilio SMS**: Professional text message outreach
+- **Smart Follow-ups**: Automated follow-up sequences
+- **Compliance**: CAN-SPAM and TCPA compliant
+- **Rate Limiting**: Prevents spam flags and account issues
+- **Response Monitoring**: Automatic unsubscribe and interest detection
 
-## System Requirements
+## 🚀 Quick Start
 
-- Python 3.8 or higher
-- Google Cloud Platform account (for Gmail and Sheets APIs)
-- Twilio account (for SMS)
-- Google Sheets document with lead data
-
-## Installation
-
-### 1. Clone and Install Dependencies
-
+### 1. Setup
 ```bash
-git clone <your-repo-url>
-cd client_reachout
+git clone <your-repo>
+cd client_outreach
+python -m venv venv
+source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### 2. Google Cloud Console Setup
+### 2. Configuration
+```bash
+cp env.example .env
+# Edit .env with your credentials
+```
 
-#### Enable APIs
-1. Go to [Google Cloud Console](https://console.cloud.google.com/)
-2. Create a new project or select existing one
-3. Enable the following APIs:
-   - Gmail API
-   - Google Sheets API
+### 3. Google Services Setup
+Follow the detailed [Google Setup Guide](GOOGLE_SETUP_GUIDE.md) to configure:
+- Google Cloud Project with Gmail & Sheets APIs
+- OAuth credentials download
+- Google Spreadsheet creation
+- Gmail "Send As" configuration for Bay Club email
 
-#### Create Credentials
-1. Go to "APIs & Services" > "Credentials"
-2. Click "Create Credentials" > "OAuth 2.0 Client IDs"
-3. Choose "Desktop Application"
-4. Download the JSON file and rename it to `credentials.json`
-5. Place `credentials.json` in the project root directory
+### 4. Test Setup
+```bash
+python test_setup.py
+```
 
-### 3. Twilio Setup
+### 5. Start Outreach
+```bash
+python main.py --send-emails
+```
 
-1. Sign up for [Twilio](https://www.twilio.com/)
-2. Get your Account SID and Auth Token from the dashboard
-3. Purchase a phone number for sending SMS
+## 📊 System Architecture
 
-### 4. Google Sheets Setup
+```
+┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
+│  Google Sheets  │    │   Gmail API      │    │   Twilio SMS    │
+│  Lead Tracking  │◄──►│  Email Service   │◄──►│   Service       │
+└─────────────────┘    └──────────────────┘    └─────────────────┘
+         │                        │                        │
+         ▼                        ▼                        ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                  Main Automation Engine                         │
+│  • Lead Processing  • Response Monitoring  • Follow-ups        │
+└─────────────────────────────────────────────────────────────────┘
+```
 
-1. Create a new Google Sheets document
-2. Set up columns in this exact order:
-   - Column A: Name
-   - Column B: Email  
-   - Column C: Phone
-   - Column D: Status
-   - Column E: Date_Contacted
-   - Column F: Response_Received
-   - Column G: Follow_Up_Sent
-   - Column H: Notes
+## 📧 Email Flow
 
-3. Add a header row with these column names
-4. Copy the spreadsheet ID from the URL (the long string between `/d/` and `/edit`)
+1. **Personal Gmail Account**: `alexhuynhfitness@gmail.com` (actual sender)
+2. **Gmail "Send As" Feature**: Makes emails appear from `alex.huynh@bayclubs.com`
+3. **Professional Branding**: All emails branded as Bay Club
+4. **Compliance**: Automatic unsubscribe headers and CAN-SPAM compliance
 
-### 5. Configuration
+## 📱 SMS Flow
 
-1. Copy the environment file:
-   ```bash
-   cp env.example .env
-   ```
+1. **Twilio Account**: Registered with `alex.huynh@bayclubs.com`
+2. **Professional Messages**: Bay Club branded SMS templates
+3. **Opt-out Compliance**: STOP keyword handling
+4. **Rate Limiting**: Prevents carrier blocking
 
-2. Edit `.env` with your actual credentials:
-   ```bash
-   SPREADSHEET_ID=your_actual_spreadsheet_id
-   SENDER_EMAIL=your_bayclub_email@domain.com
-   TWILIO_ACCOUNT_SID=your_twilio_sid
-   TWILIO_AUTH_TOKEN=your_twilio_token
-   TWILIO_PHONE_NUMBER=+1234567890
-   ```
+## 🎯 Lead Management
 
-3. Customize business information in `config.py`:
-   ```python
-   BUSINESS_NAME = 'Your Fitness Studio'
-   TRAINER_NAME = 'Your Name'
-   WEBSITE_URL = 'https://yourwebsite.com'
-   PHONE_NUMBER = '+1234567890'
-   ```
+### Lead Status Flow
+```
+New → Contacted → Responded/Follow-up Sent → Converted/Unsubscribed
+```
 
-## Usage
+### Google Sheets Structure
+| Column | Purpose | Auto-Updated |
+|--------|---------|--------------|
+| Name | Lead's name | Manual |
+| Email | Contact email | Manual |
+| Phone | Phone number | Manual |
+| Status | Current status | ✅ Auto |
+| Date Contacted | When first contacted | ✅ Auto |
+| Response Received | If they responded | ✅ Auto |
+| Follow-up Sent | Follow-up timestamp | ✅ Auto |
+| Notes | Additional info | Manual/Auto |
 
-### First Run Authentication
-
-On first run, the system will open a browser window for Google authentication:
+## 🔧 Commands
 
 ```bash
+# System Status
 python main.py --mode status
+
+# Send initial outreach emails
+python main.py --send-emails
+
+# Send SMS to new leads
+python main.py --send-sms  
+
+# Send follow-up emails (2+ days after initial contact)
+python main.py --send-follow-ups
+
+# Check for email responses and unsubscribes
+python main.py --check-responses
+
+# Interactive mode for testing
+python main.py --interactive
 ```
 
-Follow the prompts to authorize access to Gmail and Sheets.
+## 📈 Monitoring & Analytics
 
-### Basic Operations
+### Real-time Tracking
+- Email delivery status
+- SMS delivery confirmation  
+- Response detection
+- Unsubscribe processing
+- Lead conversion tracking
 
-#### Process New Leads
-```bash
-# Send both email and SMS to new leads
-python main.py --mode new
+### Compliance Logging
+- All outreach activities logged
+- Unsubscribe request timestamps
+- Rate limiting enforcement
+- Error tracking and recovery
 
-# Email only
-python main.py --mode new --email-only
+## 🔒 Security & Compliance
 
-# SMS only  
-python main.py --mode new --sms-only
-```
+### Email Compliance (CAN-SPAM)
+- ✅ Clear sender identification
+- ✅ Truthful subject lines  
+- ✅ Business address included
+- ✅ Easy unsubscribe process
+- ✅ Prompt unsubscribe processing
 
-#### Process Follow-ups
-```bash
-# Send follow-ups to leads contacted 2+ days ago
-python main.py --mode follow-up
-```
+### SMS Compliance (TCPA)
+- ✅ Explicit consent assumed for business leads
+- ✅ Clear opt-out instructions (STOP)
+- ✅ Business identification in messages
+- ✅ Reasonable sending hours
+- ✅ Rate limiting to prevent spam
 
-#### Process Both New and Follow-ups
-```bash
-python main.py --mode both
-```
+### Data Security
+- ✅ Credentials stored in environment variables
+- ✅ No hardcoded sensitive information
+- ✅ Secure OAuth 2.0 authentication
+- ✅ Activity logging for audit trails
 
-#### Check System Status
-```bash
-python main.py --mode status
-```
-
-#### Check for Responses
-```bash
-python main.py --mode check-responses
-```
-
-#### Dry Run (Preview Only)
-```bash
-python main.py --mode both --dry-run
-```
-
-### Automated Scheduling
-
-#### macOS/Linux (Cron)
-
-Add to crontab (`crontab -e`):
-
-```bash
-# Run every 4 hours during business days
-0 9,13,17 * * 1-5 cd /path/to/client_reachout && python main.py --mode both
-
-# Check responses every 2 hours
-0 */2 * * * cd /path/to/client_reachout && python main.py --mode check-responses
-```
-
-#### Windows (Task Scheduler)
-
-1. Open Task Scheduler
-2. Create Basic Task
-3. Set trigger (e.g., daily at 9 AM)
-4. Set action to start program: `python`
-5. Add arguments: `/path/to/client_reachout/main.py --mode both`
-6. Set start in: `/path/to/client_reachout`
-
-## Message Templates
-
-The system includes professional, fitness-focused templates:
+## 🎨 Customization
 
 ### Email Templates
-- **Initial**: Warm introduction with free consultation offer
-- **Follow-up**: Brief reminder with added value proposition
+Located in `config.py` - easily customizable:
+- Initial outreach email
+- Follow-up email
+- Personalized with lead information
+- Bay Club branding and contact info
 
 ### SMS Templates  
-- **Initial**: Concise offer with clear opt-out
-- **Follow-up**: Short reminder maintaining engagement
+Professional SMS templates with:
+- Bay Club branding
+- Clear call-to-action
+- Opt-out instructions
+- Personal trainer identification
 
-### Customizing Templates
-
-Edit templates in `config.py`:
-
+### Business Information
+Update `config.py` for your specific details:
 ```python
-EMAIL_TEMPLATES = {
-    'initial': """
-Subject: Your Custom Subject
-
-Your custom email content with {name} personalization.
-
-Best regards,
-{trainer_name}
-    """,
-    # ... more templates
-}
+BUSINESS_NAME = 'Bay Club'
+TRAINER_NAME = 'Alex Huynh'  
+SENDER_EMAIL = 'alex.huynh@bayclubs.com'
+WEBSITE_URL = 'https://bayclubs.com'
 ```
 
-## Lead Status Workflow
+## 📚 File Structure
 
 ```
-New → Contacted → Follow-up Sent → Responded/Converted
-                ↓
-           Unsubscribed
+client_outreach/
+├── services/
+│   ├── email_service.py      # Gmail API integration
+│   ├── sheets_service.py     # Google Sheets API
+│   └── sms_service.py        # Twilio SMS service
+├── utils/
+│   └── logger.py             # Logging and compliance
+├── config.py                 # Configuration and templates
+├── main.py                   # Main automation script
+├── test_setup.py             # System verification
+├── GOOGLE_SETUP_GUIDE.md     # Detailed setup instructions
+└── requirements.txt          # Python dependencies
 ```
 
-- **New**: Fresh leads ready for initial outreach
-- **Contacted**: Initial message sent, waiting for response  
-- **Follow-up Sent**: Follow-up message sent after 2 days
-- **Responded**: Lead replied to messages
-- **Unsubscribed**: Lead opted out
-- **Converted**: Lead became a client
+## 🔧 Development
 
-## Rate Limiting & Compliance
+### Adding New Features
+1. Fork the repository
+2. Create feature branch
+3. Add functionality with proper logging
+4. Update tests and documentation
+5. Submit pull request
 
-### Built-in Protections
-- **Email**: 50 messages per hour maximum
-- **SMS**: 30 messages per hour maximum
-- **Delays**: 2-3 seconds between messages
-- **Unsubscribe**: Automatic opt-out handling
+### Testing
+```bash
+# Test all system components
+python test_setup.py
 
-### Compliance Features
-- **CAN-SPAM**: Unsubscribe headers in all emails
-- **TCPA**: STOP keyword handling for SMS
-- **Logging**: Complete audit trail for compliance
+# Test specific functionality
+python -m pytest tests/
+```
 
-## Monitoring & Logs
-
-### Log Files
-- Location: `logs/outreach_automation.log`
-- Rotation: Automatic when files exceed 10MB
-- Retention: 5 backup files
-
-### Key Metrics to Monitor
-- Send success rates
-- Response rates
-- Unsubscribe rates
-- Error frequencies
-
-## Troubleshooting
+## 📞 Troubleshooting
 
 ### Common Issues
 
-#### "Credentials file not found"
-- Ensure `credentials.json` is in the project root
-- Re-download from Google Cloud Console if needed
+1. **Gmail Authentication Errors**
+   - Ensure `credentials.json` is downloaded from Google Cloud
+   - Verify Gmail API is enabled
+   - Check OAuth consent screen configuration
 
-#### "Invalid phone number format"
-- Phone numbers must be in format: +1234567890
-- Check Twilio phone number configuration
+2. **"Send As" Not Working**
+   - Complete Gmail "Send As" verification process
+   - Check `alex.huynh@bayclubs.com` for verification email
+   - Ensure Bay Club email is set as default sender
 
-#### "Rate limit exceeded"
-- Wait for the hourly reset
-- Consider reducing batch sizes
+3. **Google Sheets Access Issues**
+   - Verify Google Sheets API is enabled  
+   - Check spreadsheet sharing permissions
+   - Confirm SPREADSHEET_ID in .env file
 
-#### "Spreadsheet not found"
-- Verify SPREADSHEET_ID in `.env`
-- Ensure the sheet is shared with your Google account
+4. **Twilio SMS Issues**
+   - Verify account credentials in .env
+   - Check phone number format (+1XXXXXXXXXX)
+   - Ensure sufficient Twilio account balance
 
-### Email Delivery Issues
+### Logs
+Check `outreach_automation.log` for detailed error information and system activity.
 
-1. **Emails going to spam**:
-   - Reduce sending rate
-   - Improve email content quality
-   - Use authenticated domain
+## 🎯 Best Practices
 
-2. **Gmail API errors**:
-   - Check API quotas in Google Cloud Console
-   - Verify OAuth scopes are correct
+1. **Start Small**: Test with 2-3 leads initially
+2. **Monitor Deliverability**: Check spam folders for first few sends
+3. **Respect Unsubscribes**: Process them immediately
+4. **Regular Backups**: Export Google Sheets data regularly
+5. **Update Templates**: Keep messaging fresh and relevant
 
-### SMS Delivery Issues
+## 📄 License
 
-1. **SMS not delivering**:
-   - Verify phone number format
-   - Check Twilio account balance
-   - Review Twilio console logs
-
-## Security Best Practices
-
-1. **Credential Management**:
-   - Never commit `.env` or `credentials.json` to version control
-   - Use strong, unique passwords
-   - Enable 2FA on all accounts
-
-2. **Rate Limiting**:
-   - Don't exceed built-in limits
-   - Monitor for unusual error rates
-   - Implement additional delays if needed
-
-3. **Data Protection**:
-   - Regular backups (automated by system)
-   - Secure local file storage
-   - Compliance with data protection laws
-
-## Support
-
-For issues or questions:
-
-1. Check logs in `logs/outreach_automation.log`
-2. Review this README for common solutions
-3. Check Google Cloud Console for API quotas/errors
-4. Review Twilio console for SMS delivery issues
-
-## License
-
-This project is for personal/business use. Ensure compliance with local regulations regarding cold outreach.
+This project is for Bay Club internal use. All rights reserved.
 
 ---
 
-**Important**: Always comply with CAN-SPAM, TCPA, and local regulations when conducting cold outreach. This system provides compliance tools but the responsibility for lawful use remains with the operator. 
+🏆 **Professional outreach automation for Bay Club personal training services**
+
+For detailed setup instructions, see [GOOGLE_SETUP_GUIDE.md](GOOGLE_SETUP_GUIDE.md) 
